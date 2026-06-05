@@ -1,4 +1,5 @@
 import argparse
+import json
 import habitaclia
 import fotocasa
 import idealista
@@ -16,7 +17,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("scraper", choices=list(SCRAPERS))
     parser.add_argument("--db", action="store_true", help="Save results to MariaDB")
+    parser.add_argument("--individual", metavar="ID", help="Scrape a single property by ID (idealista only)")
     args = parser.parse_args()
+
+    if args.individual:
+        if args.scraper != "idealista":
+            parser.error("--individual is only supported for the idealista scraper")
+        offer = idealista.scrape_individual(args.individual)
+        print(json.dumps(offer, ensure_ascii=False, indent=2))
+        return
 
     offers = SCRAPERS[args.scraper]()
     print(f"Found {len(offers)} houses\n")

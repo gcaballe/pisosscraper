@@ -1,11 +1,11 @@
 import re
 import time
 import random
+from urllib.parse import urljoin
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
-BASE_URL = "https://www.yaencontre.com"
-LISTING_URL = "https://www.yaencontre.com/venta/pisos/igualada/f--250000euros"
+LISTING_URL = "https://www.yaencontre.com/venta/pisos/igualada/f--200000euros"
 HEADERS = {"Accept-Language": "es-ES,es;q=0.9"}
 
 
@@ -53,7 +53,7 @@ def _parse_page(soup):
         if not h3:
             continue
         href = a["href"]
-        url = BASE_URL + href if href.startswith("/") else href
+        url = urljoin(LISTING_URL, href)
         if url in seen:
             continue
         seen.add(url)

@@ -27,18 +27,40 @@ def _ensure_tables(cursor):
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS houses (
-            id          INT AUTO_INCREMENT PRIMARY KEY,
-            scan_id     INT          NOT NULL,
-            name        VARCHAR(500),
-            price       VARCHAR(50),
-            url         VARCHAR(1000),
-            rooms       VARCHAR(50),
-            surface     VARCHAR(50),
-            zone        VARCHAR(200),
-            description TEXT,
+            id                    INT AUTO_INCREMENT PRIMARY KEY,
+            scan_id               INT          NOT NULL,
+            name                  VARCHAR(500),
+            price                 VARCHAR(50),
+            url                   VARCHAR(1000),
+            rooms                 VARCHAR(50),
+            surface               VARCHAR(50),
+            zone                  VARCHAR(200),
+            description           TEXT,
+            external_id           VARCHAR(100),
+            planta                TINYINT,
+            ascensor              TINYINT(1),
+            orientacion           VARCHAR(10),
+            trastero              TINYINT(1),
+            terraza               TINYINT(1),
+            certificado_energetico VARCHAR(5),
+            inmobiliaria          VARCHAR(200),
             FOREIGN KEY (scan_id) REFERENCES scans(id)
         )
     """)
+    # Add columns to pre-existing tables that predate this schema
+    for col, definition in [
+        ("external_id",            "VARCHAR(100)"),
+        ("planta",                 "TINYINT"),
+        ("ascensor",               "TINYINT(1)"),
+        ("orientacion",            "VARCHAR(10)"),
+        ("trastero",               "TINYINT(1)"),
+        ("terraza",                "TINYINT(1)"),
+        ("certificado_energetico", "VARCHAR(5)"),
+        ("inmobiliaria",           "VARCHAR(200)"),
+    ]:
+        cursor.execute(
+            f"ALTER TABLE houses ADD COLUMN IF NOT EXISTS {col} {definition}"
+        )
 
 
 def _val(v):
@@ -59,8 +81,11 @@ def save_scan(website, offers):
             for offer in offers:
                 cur.execute(
                     """INSERT INTO houses
-                           (scan_id, name, price, url, rooms, surface, zone, description)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                           (scan_id, name, price, url, rooms, surface, zone, description,
+                            external_id, planta, ascensor, orientacion,
+                            trastero, terraza, certificado_energetico, inmobiliaria)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         scan_id,
                         _val(offer.get("name")),
@@ -70,6 +95,14 @@ def save_scan(website, offers):
                         _val(offer.get("surface")),
                         _val(offer.get("zone")),
                         _val(offer.get("description")),
+                        _val(offer.get("id")),
+                        offer.get("planta"),
+                        offer.get("ascensor"),
+                        offer.get("orientacion"),
+                        offer.get("trastero"),
+                        offer.get("terraza"),
+                        offer.get("certificado_energetico"),
+                        offer.get("inmobiliaria"),
                     ),
                 )
         conn.commit()

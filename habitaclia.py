@@ -4,7 +4,7 @@ import random
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
-LISTING_URL = "https://www.habitaclia.com/viviendas-igualada.htm?pmax=120000"
+LISTING_URL = "https://www.habitaclia.com/viviendas-igualada.htm?pmax=180000&codzonas=4,2"
 HEADERS = {"Accept-Language": "es-ES,es;q=0.9"}
 
 
