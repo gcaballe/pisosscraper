@@ -20,9 +20,10 @@ def _connect():
 def _ensure_tables(cursor):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scans (
-            id        INT AUTO_INCREMENT PRIMARY KEY,
-            timestamp DATETIME     NOT NULL,
-            website   VARCHAR(50)  NOT NULL
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            timestamp   DATETIME     NOT NULL,
+            website     VARCHAR(50)  NOT NULL,
+            house_count INT
         )
     """)
     cursor.execute("""
@@ -74,8 +75,8 @@ def save_scan(website, offers):
         with conn.cursor() as cur:
             _ensure_tables(cur)
             cur.execute(
-                "INSERT INTO scans (timestamp, website) VALUES (%s, %s)",
-                (datetime.now(), website),
+                "INSERT INTO scans (timestamp, website, house_count) VALUES (%s, %s, %s)",
+                (datetime.now(), website, len(offers)),
             )
             scan_id = cur.lastrowid
             for offer in offers:

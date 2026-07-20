@@ -15,7 +15,7 @@ venv\Scripts\pip install -r requirements.txt
 ## Uso
 
 ```bash
-venv\Scripts\python run.py <portal> [--db]
+venv\Scripts\python run.py <portal> [--db] [--limit N]
 ```
 
 **Portales disponibles:** `habitaclia`, `fotocasa`, `idealista`, `yaencontre`
@@ -24,6 +24,12 @@ venv\Scripts\python run.py <portal> [--db]
 |---|---|
 | `<portal>` | Portal a scrapear (obligatorio) |
 | `--db` | Guarda los resultados en MariaDB (requiere `.env` con credenciales) |
+| `--limit N` | Detiene la extracción tras obtener N resultados. Útil para pruebas rápidas. |
+
+```bash
+# Obtener sólo los 5 primeros resultados de habitaclia
+venv\Scripts\python run.py habitaclia --limit 5
+```
 
 **Salida:**
 ```

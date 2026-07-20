@@ -12,36 +12,36 @@ SCRAPERS = {
     "yaencontre": yaencontre.scrape,
 }
 
+INDIVIDUAL_SCRAPERS = {
+    "idealista": idealista.scrape_individual,
+    "yaencontre": yaencontre.scrape_individual,
+}
+
+
+def _print_offers(offers):
+    print(json.dumps(offers, ensure_ascii=False, indent=2))
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("scraper", choices=list(SCRAPERS))
     parser.add_argument("--db", action="store_true", help="Save results to MariaDB")
-    parser.add_argument("--individual", metavar="ID", help="Scrape a single property by ID (idealista only)")
+    parser.add_argument("--individual", metavar="ID", help="Scrape a single property by ID")
+    parser.add_argument("--limit", type=int, default=None, metavar="N", help="Stop after N results")
     args = parser.parse_args()
 
     if args.individual:
-        if args.scraper != "idealista":
-            parser.error("--individual is only supported for the idealista scraper")
-        offer = idealista.scrape_individual(args.individual)
-        print(json.dumps(offer, ensure_ascii=False, indent=2))
+        if args.scraper not in INDIVIDUAL_SCRAPERS:
+            parser.error(f"--individual is not supported for the {args.scraper} scraper")
+        offer = INDIVIDUAL_SCRAPERS[args.scraper](args.individual)
+        _print_offers([offer])
+        if args.db:
+            import db
+            db.save_scan(args.scraper, [offer])
         return
 
-    offers = SCRAPERS[args.scraper]()
-    print(f"Found {len(offers)} houses\n")
-    for offer in offers:
-        print(f"Name:  {offer['name']}")
-        print(f"Price: {offer['price']}")
-        if offer.get("rooms"):
-            print(f"Rooms: {offer['rooms']}")
-        if offer.get("surface"):
-            print(f"Surface: {offer['surface']}")
-        if offer.get("zone"):
-            print(f"Zone:  {offer['zone']}")
-        if offer.get("description"):
-            print(f"Desc:  {offer['description'][:30]}")
-        print(f"URL:   {offer['url']}")
-        print()
+    offers = SCRAPERS[args.scraper](limit=args.limit)
+    _print_offers(offers)
 
     if args.db:
         import db

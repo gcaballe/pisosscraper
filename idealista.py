@@ -3,8 +3,9 @@ import time
 import random
 from curl_cffi import requests
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 
-LISTING_URL = "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_180000/"
+LISTING_URL = "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_300000/" # "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_180000/"
 BASE_URL = "https://www.idealista.com"
 HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9",
@@ -20,9 +21,9 @@ def _get(session, url, referer=None):
     return session.get(url, impersonate="safari17_0", headers=headers)
 
 
-def scrape():
+def scrape(limit=None):
     session = requests.Session()
-    offers = []
+    stub_offers = []
     current_url = LISTING_URL
     prev_url = None
 
@@ -35,37 +36,24 @@ def scrape():
             link = article.select_one("a.item-link")
             if not link:
                 continue
-
-            title = link.get_text(strip=True)
             url = BASE_URL + link["href"]
+            stub_offers.append(url)
+            if limit is not None and len(stub_offers) >= limit:
+                break
 
-            price_el = article.select_one("span.item-price")
-            price = _clean_price(price_el.get_text(strip=True)) if price_el else "N/A"
-
-            details = [el.get_text(strip=True) for el in article.select(".item-detail")]
-            rooms = next((d for d in details if re.match(r"\d+ hab\.", d)), "N/A")
-            surface = next((d for d in details if re.match(r"\d+\s*m²", d)), "N/A")
-
-            zone = _parse_zone(title)
-
-            desc_el = article.select_one(".item-description")
-            description = " ".join(desc_el.get_text(" ", strip=True).split()) if desc_el else "N/A"
-
-            m_id = re.search(r"/inmueble/(\d+)/", link["href"])
-            offers.append({
-                "id": m_id.group(1) if m_id else "N/A",
-                "name": title,
-                "price": price,
-                "url": url,
-                "rooms": rooms,
-                "surface": surface,
-                "zone": zone,
-                "description": description,
-            })
+        if limit is not None and len(stub_offers) >= limit:
+            break
 
         next_link = soup.select_one("a.icon-arrow-right-after")
         prev_url = current_url
         current_url = BASE_URL + next_link["href"] if next_link else None
+
+    offers = []
+    for url in tqdm(stub_offers, desc="Scraping details", unit="property"):
+        resp = _get(session, url, referer=LISTING_URL)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        offers.append(_parse_detail(soup, url))
 
     return offers
 
