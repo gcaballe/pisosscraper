@@ -3,3 +3,4 @@ beautifulsoup4
 pymysql
 python-dotenv
 tqdm
+flask

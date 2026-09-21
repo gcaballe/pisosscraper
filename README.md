@@ -54,6 +54,19 @@ Luego ejecuta con `--db`:
 venv\Scripts\python run.py idealista --db
 ```
 
+### Ver en el navegador
+
+```bash
+venv\Scripts\python web.py
+# abre http://127.0.0.1:5000
+```
+
+- `/` lista los scans con su conteo real de houses.
+- `/houses` lista houses con filtros: texto libre, website, scan,
+  zona, habitaciones, inmobiliaria, ascensor/terraza/trastero + paginación.
+- `/house/<id>` muestra el detalle y el historial del mismo piso
+  en distintos scans (agrupado por `external_id`, o por `url` si no hay).
+
 ## Técnica por portal
 
 Todos los scrapers usan `curl_cffi` con impersonación de Chrome para evadir la detección de bots por TLS fingerprint. Cada scraper devuelve una lista de dicts con `id`, `name`, `price`, `url` y, opcionalmente, `rooms`, `surface`, `zone` y `description`.
