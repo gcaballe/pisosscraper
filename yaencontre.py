@@ -6,7 +6,7 @@ from curl_cffi import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-LISTING_URL = "https://www.yaencontre.com/venta/pisos/igualada/f--300000euros"
+LISTING_URL = "https://www.yaencontre.com/venta/pisos/igualada/f--250000euros"
 BASE_URL = "https://www.yaencontre.com"
 HEADERS = {"Accept-Language": "es-ES,es;q=0.9"}
 

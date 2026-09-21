@@ -66,6 +66,9 @@ venv\Scripts\python web.py
   zona, habitaciones, inmobiliaria, ascensor/terraza/trastero + paginación.
 - `/house/<id>` muestra el detalle y el historial del mismo piso
   en distintos scans (agrupado por `external_id`, o por `url` si no hay).
+- `/compare?old_id=24&new_id=28` compara dos scans del mismo website:
+  lista ordenada por diferencia de precio con estados `NEW`, `REMOVED`,
+  `PRICE DIFF ±X€` o sin cambios, más gráfico circular con el resumen.
 
 ## Técnica por portal
 

@@ -6,7 +6,7 @@ from curl_cffi import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-LISTING_URL = "https://www.fotocasa.es/ca/comprar/pisos/igualada/totes-les-zones/l" # ?maxPrice=200000
+LISTING_URL = "https://www.fotocasa.es/ca/comprar/pisos/igualada/totes-les-zones/l?maxPrice=250000" # ?maxPrice=200000
 BASE_URL = "https://www.fotocasa.es"
 HEADERS = {"Accept-Language": "ca-ES,ca;q=0.9,es;q=0.8"}
 

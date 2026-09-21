@@ -5,7 +5,7 @@ from curl_cffi import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-LISTING_URL = "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_300000/" # "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_180000/"
+LISTING_URL = "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_250000/" # "https://www.idealista.com/venta-viviendas/igualada-barcelona/con-precio-hasta_180000/"
 BASE_URL = "https://www.idealista.com"
 HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9",
