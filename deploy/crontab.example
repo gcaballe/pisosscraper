@@ -1,0 +1,7 @@
+# Install with: crontab -e   (paste these lines)
+# Staggered Sunday 03:00 run, one portal every 15 min, to avoid hammering sites at once.
+# Create the logs/ dir first: mkdir -p /docker/stack_pisosscraper/logs
+0  3 * * 0 cd /docker/stack_pisosscraper && venv/bin/python run.py habitaclia --db >> logs/habitaclia.log 2>&1
+15 3 * * 0 cd /docker/stack_pisosscraper && venv/bin/python run.py fotocasa --db >> logs/fotocasa.log 2>&1
+30 3 * * 0 cd /docker/stack_pisosscraper && venv/bin/python run.py idealista --db >> logs/idealista.log 2>&1
+45 3 * * 0 cd /docker/stack_pisosscraper && venv/bin/python run.py yaencontre --db >> logs/yaencontre.log 2>&1

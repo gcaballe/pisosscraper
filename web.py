@@ -392,5 +392,6 @@ def compare():
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=5000)
+    p.add_argument("--debug", action="store_true", help="Enable Flask debugger (local dev only, never on a public server)")
     a = p.parse_args()
-    app.run(host="127.0.0.1", port=a.port, debug=True)
+    app.run(host="127.0.0.1", port=a.port, debug=a.debug)
