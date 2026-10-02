@@ -18,5 +18,34 @@ services:
       timeout: 5s
       retries: 5
 
+  web:
+    build:
+      context: ..
+    image: pisosscraper-app:latest
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  scheduler:
+    image: pisosscraper-app:latest
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+    command: ["python", "deploy/weekly_scheduler.py"]
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
 volumes:
   mariadb_data:
