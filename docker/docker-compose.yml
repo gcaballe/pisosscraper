@@ -29,7 +29,7 @@ services:
       DB_HOST: mariadb
       DB_PORT: "3306"
     ports:
-      - "${WEB_PORT:-8000}:8000"
+      - "${WEB_PORT:-8008}:8000"
     depends_on:
       mariadb:
         condition: service_healthy
