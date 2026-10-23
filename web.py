@@ -28,6 +28,10 @@ form.filters input,form.filters select{padding:4px 6px}
 .legend{font-size:14px;line-height:1.8}
 .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px}
 .diff-up{color:#166534}.diff-down{color:#991b1b}
+.tabs{margin:8px 0 4px}
+.tabs a{display:inline-block;padding:6px 12px;margin-right:4px;border:1px solid #ddd;border-bottom:none;border-radius:6px 6px 0 0;text-decoration:none;color:#222;background:#f4f4f4}
+.tabs a.active{background:#fff;font-weight:bold}
+.weeknav{display:flex;justify-content:space-between;margin:8px 0}
 """
 
 SCANS_TPL = """
@@ -35,11 +39,12 @@ SCANS_TPL = """
 <style>{{css}}</style></head><body>
 <nav><a href="{{url_for('scans')}}">Scans</a><a href="{{url_for('houses')}}">Houses</a><a href="{{url_for('compare')}}">Compare</a></nav>
 <h1>Scans ({{scans|length}})</h1>
-<table><tr><th>ID</th><th>Date</th><th>Website</th><th>Houses</th><th></th></tr>
+<table><tr><th>ID</th><th>Date</th><th>Website</th><th>Houses</th><th></th><th></th></tr>
 {% for s in scans %}
 <tr><td>{{s.id}}</td><td>{{s.timestamp}}</td><td>{{s.website}}</td>
 <td>{{s.real_count}}</td>
-<td><a href="{{url_for('houses')}}?scan_id={{s.id}}">view</a></td></tr>
+<td><a href="{{url_for('houses')}}?scan_id={{s.id}}">view</a></td>
+<td>{% if s.real_count and s.prev_id %}<a href="{{url_for('compare', old_id=s.prev_id, new_id=s.id)}}">compare ↔ previous</a>{% endif %}</td></tr>
 {% endfor %}</table>
 <p class="muted">Total houses: {{total}}</p>
 </body></html>
@@ -142,6 +147,12 @@ def scans():
             s["real_count"] = cur.fetchone()["c"]
         cur.execute("SELECT COUNT(*) AS c FROM houses")
         total = cur.fetchone()["c"]
+    # Previous non-empty scan of the same portal, for the one-click compare link
+    last_nonempty = {}
+    for s in reversed(scan_rows):
+        s["prev_id"] = last_nonempty.get(s["website"])
+        if s["real_count"]:
+            last_nonempty[s["website"]] = s["id"]
     return render_template_string(SCANS_TPL, css=BASE_CSS, scans=scan_rows, total=total)
 
 
@@ -249,10 +260,16 @@ COMPARE_TPL = """
 <style>{{css}}</style></head><body>
 <nav><a href="{{url_for('scans')}}">Scans</a><a href="{{url_for('houses')}}">Houses</a><a href="{{url_for('compare')}}">Compare</a></nav>
 <h1>Scan comparator</h1>
+{% if websites %}
+<p class="tabs">{% for w in websites %}<a href="{{url_for('compare', website=w)}}" {% if w==website %}class="active"{% endif %}>{{w}}</a>{% endfor %}</p>
+{% endif %}
+{% if options %}
 <form class="filters" method="get">
-<select name="old_id">{% for s in scans %}<option value="{{s.id}}" {% if old_id==s.id %}selected{% endif %}>{{s.website}} #{{s.id}} {{s.timestamp}} ({{s.n}})</option>{% endfor %}</select>
-<span>→</span>
-<select name="new_id">{% for s in scans %}<option value="{{s.id}}" {% if new_id==s.id %}selected{% endif %}>{{s.website}} #{{s.id}} {{s.timestamp}} ({{s.n}})</option>{% endfor %}</select>
+<input type="hidden" name="website" value="{{website}}">
+<span>from</span>
+<select name="old_id">{% for s in options %}<option value="{{s.id}}" {% if old_id==s.id %}selected{% endif %}>{{s.label}}</option>{% endfor %}</select>
+<span>→ to</span>
+<select name="new_id">{% for s in options %}<option value="{{s.id}}" {% if new_id==s.id %}selected{% endif %}>{{s.label}}</option>{% endfor %}</select>
 <select name="show">
 <option value="all" {% if show=='all' %}selected{% endif %}>all</option>
 <option value="changed" {% if show=='changed' %}selected{% endif %}>price changed</option>
@@ -262,9 +279,14 @@ COMPARE_TPL = """
 </select>
 <button type="submit">Compare</button>
 </form>
-{% if error %}<p><b>{{error}}</b></p></body></html>
-{% elif not rows is none %}
-<h2>{{old.website}} #{{old.id}} ({{old.timestamp}}) → #{{new.id}} ({{new.timestamp}})</h2>
+{% endif %}
+{% if error %}<p><b>{{error}}</b></p>
+{% elif rows is not none %}
+<div class="weeknav">
+<span>{% if prev_pair %}<a href="{{url_for('compare', website=website, old_id=prev_pair[0], new_id=prev_pair[1], show=show)}}">◀ previous week</a>{% endif %}</span>
+<span>{% if next_pair %}<a href="{{url_for('compare', website=website, old_id=next_pair[0], new_id=next_pair[1], show=show)}}">next week ▶</a>{% endif %}</span>
+</div>
+<h2>{{website}}: {{old.label}} → {{new.label}}</h2>
 <div class="pie" style="background:{{pie_style}}"></div>
 <div class="legend">
 <span class="dot" style="background:#22c55e"></span>NEW: {{stats.new}}<br>
@@ -315,24 +337,59 @@ def compare():
         scans = qdict(cur, "SELECT s.id, s.website, s.timestamp, COUNT(h.id) AS n "
                             "FROM scans s LEFT JOIN houses h ON h.scan_id=s.id "
                             "GROUP BY s.id ORDER BY s.id DESC")
-    if not scans:
-        return render_template_string(COMPARE_TPL, css=BASE_CSS, scans=[], rows=None, error="No scans yet.")
-    try:
-        old_id = int(request.args.get("old_id", scans[-1]["id"]))
-        new_id = int(request.args.get("new_id", scans[0]["id"]))
-    except (TypeError, ValueError):
-        return render_template_string(COMPARE_TPL, css=BASE_CSS, scans=scans, rows=None,
-                                      error="Invalid scan ids.", old_id=None, new_id=None, show="all")
     show = request.args.get("show", "all")
-    meta = {s["id"]: s for s in scans}
-    if old_id not in meta or new_id not in meta:
-        return render_template_string(COMPARE_TPL, css=BASE_CSS, scans=scans, rows=None,
-                                      error="Unknown scan id.", old_id=old_id, new_id=new_id, show=show)
-    old, new = meta[old_id], meta[new_id]
-    if old["website"] != new["website"]:
-        return render_template_string(COMPARE_TPL, css=BASE_CSS, scans=scans, rows=None,
-                                      error=f"Pick two scans of the same website (old={old['website']}, new={new['website']}).",
+    websites = sorted({s["website"] for s in scans})
+
+    def _error(msg, website=None, options=(), old_id=None, new_id=None):
+        return render_template_string(COMPARE_TPL, css=BASE_CSS, websites=websites, website=website,
+                                      options=list(options), rows=None, error=msg,
                                       old_id=old_id, new_id=new_id, show=show)
+
+    if not scans:
+        return _error("No scans yet.")
+    for s in scans:
+        s["label"] = f"{s['timestamp']:%a %d %b %Y %H:%M} · {s['n']} houses"
+    meta = {s["id"]: s for s in scans}
+    try:
+        old_id = int(request.args["old_id"]) if request.args.get("old_id") else None
+        new_id = int(request.args["new_id"]) if request.args.get("new_id") else None
+    except ValueError:
+        return _error("Invalid scan ids.")
+    if (old_id is not None and old_id not in meta) or (new_id is not None and new_id not in meta):
+        return _error("Unknown scan id.")
+
+    # Portal: explicit ?website=, else the selected scan's, else the most recently scraped one
+    website = (request.args.get("website")
+               or (meta[new_id]["website"] if new_id else None)
+               or next((s["website"] for s in scans if s["n"]), scans[0]["website"]))
+    if website not in websites:
+        return _error("Unknown website.")
+
+    # Non-empty scans of this portal, oldest → newest; empty scans only give meaningless diffs
+    timeline = [s for s in reversed(scans) if s["website"] == website and s["n"]]
+    if new_id is None:
+        new_id = timeline[-1]["id"] if timeline else None
+    if old_id is None:
+        old_id = timeline[-2]["id"] if len(timeline) > 1 else new_id
+    if new_id is None:
+        return _error(f"No non-empty scans for {website}.", website)
+    options = list(reversed(timeline))
+    for sid in (old_id, new_id):
+        if meta[sid] not in options:
+            options.append(meta[sid])
+    old, new = meta[old_id], meta[new_id]
+    if old["website"] != website or new["website"] != website:
+        return _error("Pick two scans of the same website.", website, options, old_id, new_id)
+
+    ids = [s["id"] for s in timeline]
+    prev_pair = next_pair = None
+    if old_id in ids and new_id in ids:
+        oi, ni = ids.index(old_id), ids.index(new_id)
+        if oi > 0 and ni > 0:
+            prev_pair = (ids[oi - 1], ids[ni - 1])
+        if oi < len(ids) - 1 and ni < len(ids) - 1:
+            next_pair = (ids[oi + 1], ids[ni + 1])
+
     conn = get_conn()
     with conn.cursor(pymysql.cursors.DictCursor) as cur:
         cur.execute("SELECT id, name, price, url, external_id, zone FROM houses WHERE scan_id=%s", (old_id,))
@@ -384,8 +441,9 @@ def compare():
                       stats["changed"] / total * 100, stats["same"] / total * 100)
     pie_style = (f"conic-gradient(#22c55e 0% {pn:.1f}%, #ef4444 {pn:.1f}% {pn+pr:.1f}%, "
                  f"#f59e0b {pn+pr:.1f}% {pn+pr+pc:.1f}%, #d1d5db {pn+pr+pc:.1f}% 100%)")
-    return render_template_string(COMPARE_TPL, css=BASE_CSS, scans=scans, rows=rows,
-                                  old_id=old_id, new_id=new_id, show=show,
+    return render_template_string(COMPARE_TPL, css=BASE_CSS, websites=websites, website=website,
+                                  options=options, rows=rows, old_id=old_id, new_id=new_id, show=show,
+                                  prev_pair=prev_pair, next_pair=next_pair,
                                   old=old, new=new, stats=stats, pie_style=pie_style, error=None)
 
 

@@ -61,14 +61,19 @@ venv\Scripts\python web.py
 # abre http://127.0.0.1:5000
 ```
 
-- `/` lista los scans con su conteo real de houses.
+- `/` lista los scans con su conteo real de houses y un enlace `compare ↔ previous`
+  que abre directamente la comparación con el scan anterior no vacío del mismo portal.
 - `/houses` lista houses con filtros: texto libre, website, scan,
   zona, habitaciones, inmobiliaria, ascensor/terraza/trastero + paginación.
 - `/house/<id>` muestra el detalle y el historial del mismo piso
   en distintos scans (agrupado por `external_id`, o por `url` si no hay).
-- `/compare?old_id=24&new_id=28` compara dos scans del mismo website:
-  lista ordenada por diferencia de precio con estados `NEW`, `REMOVED`,
+- `/compare` compara dos scans del mismo portal. Se elige primero el portal
+  (pestañas) y luego los dos scans por fecha; por defecto muestra el último scan
+  frente al anterior, y los enlaces `◀ previous week` / `next week ▶` desplazan
+  ambos a la vez. Los scans vacíos (0 houses) no se ofrecen. Resultado: lista
+  ordenada por diferencia de precio con estados `NEW`, `REMOVED`,
   `PRICE DIFF ±X€` o sin cambios, más gráfico circular con el resumen.
+  Las URLs antiguas (`/compare?old_id=24&new_id=28`) siguen funcionando.
 
 ## Técnica por portal
 
