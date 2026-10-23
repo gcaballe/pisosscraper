@@ -11,6 +11,8 @@ HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 }
+# DataDome rejects most curl_cffi fingerprints (403); safari17_2_ios currently passes.
+IMPERSONATE = "safari17_2_ios"
 
 
 def _get(session, url, referer=None):
@@ -18,7 +20,7 @@ def _get(session, url, referer=None):
     if referer:
         headers["Referer"] = referer
     time.sleep(random.uniform(2, 4))
-    return session.get(url, impersonate="safari17_0", headers=headers)
+    return session.get(url, impersonate=IMPERSONATE, headers=headers)
 
 
 def scrape(limit=None):
@@ -87,14 +89,14 @@ def _parse_detail(soup, url):
     m_surface = re.search(r"(\d+)\s*m²", features_text)
     surface = f"{m_surface.group(1)} m²" if m_surface else "N/A"
 
-    zone = _parse_zone(title)
+    zone = _parse_zone(soup, title)
 
     # Planta
     planta = None
     for f in features:
         m = re.search(r"(\d+)[ªaáo°]\s*planta", f, re.IGNORECASE)
         if m:
-            planta = m.group(1)
+            planta = int(m.group(1))
             break
 
     # Ascensor
@@ -134,16 +136,16 @@ def _parse_detail(soup, url):
             terraza = 1
             break
 
-    # Certificado energético
-    cert_el = soup.find("span", class_=re.compile(r"icon-energy-"))
+    # Certificado energético: class is icon-energy-c-<rating> (c = consumo)
+    cert_el = soup.find("span", class_=re.compile(r"icon-energy-c-"))
     cert = None
     if cert_el:
-        m = re.search(r"icon-energy-([a-zA-Z])", " ".join(cert_el.get("class", [])))
+        m = re.search(r"icon-energy-c-([a-gA-G])\b", " ".join(cert_el.get("class", [])))
         if m:
             cert = m.group(1).upper()
 
     # Inmobiliaria
-    adv_el = soup.select_one("p.advertiser-name")
+    adv_el = soup.select_one(".about-advertiser-name") or soup.select_one("p.advertiser-name")
     inmobiliaria = None
     if adv_el:
         raw = adv_el.get_text(strip=True)
@@ -178,10 +180,15 @@ def _clean_price(text):
     return re.sub(r"(\d)€", r"\1 €", text)
 
 
-def _parse_zone(title):
-    """Extract zone from 'Piso en Street, Zone, City' or 'Piso en Zone, City'."""
+def _parse_zone(soup, title):
+    """Zone from the location block ('Distrito Ponent' / 'Barrio Centre'), falling back to the title."""
+    for li in soup.select("#headerMap li"):
+        text = li.get_text(" ", strip=True)
+        m = re.match(r"(?:Distrito|Barrio|Zona)\s+(.+)$", text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+
+    # "Ático en venta en Ponent" / "Piso en Centre, Igualada" → text after the last "en "
     parts = [p.strip() for p in title.split(",")]
-    
-    # "Dúplex en Centre, Igualada" → extract after "en "
-    m = re.search(r"\ben\s+(.+)$", parts[0])
+    m = re.search(r"\ben\s+(?!venta\b)(.+)$", parts[0])
     return m.group(1).strip() if m else "N/A"

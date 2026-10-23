@@ -1,14 +1,18 @@
 import re
 import time
 import random
-from urllib.parse import urljoin
+import json
+import base64
 from curl_cffi import requests
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 LISTING_URL = "https://www.yaencontre.com/venta/pisos/igualada/f--250000euros"
 BASE_URL = "https://www.yaencontre.com"
 HEADERS = {"Accept-Language": "es-ES,es;q=0.9"}
+# DataDome rejects most curl_cffi fingerprints (403); safari18_0 currently passes.
+IMPERSONATE = "safari18_0"
+
+_STATE_RE = re.compile(r'window\.__INITIAL_STATE__\s*=\s*JSON\.parse\(atob\("([^"]+)"\)\)')
 
 _ORIENT_MAP = {
     "sureste": "SE", "suroeste": "SO", "noreste": "NE", "noroeste": "NO",
@@ -22,9 +26,21 @@ def _get(session, url, referer=None):
     headers = {**HEADERS}
     if referer:
         headers["Referer"] = referer
-    resp = session.get(url, impersonate="safari17_0", headers=headers)
+    resp = session.get(url, impersonate=IMPERSONATE, headers=headers)
     time.sleep(random.uniform(2, 4))
     return resp
+
+
+def _extract_state(html):
+    """Decode the base64 JSON state embedded as window.__INITIAL_STATE__."""
+    m = _STATE_RE.search(html)
+    if not m:
+        return {}
+    return json.loads(base64.b64decode(m.group(1)))
+
+
+def _page_url(page):
+    return LISTING_URL if page == 1 else f"{LISTING_URL}/pag-{page}"
 
 
 def scrape(limit=None):
@@ -34,156 +50,116 @@ def scrape(limit=None):
     prev_url = None
 
     while True:
-        url = LISTING_URL if page == 1 else f"{LISTING_URL}/pag-{page}"
+        url = _page_url(page)
         resp = _get(session, url, referer=prev_url)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+        state = _extract_state(resp.text)
 
-        seen = set()
-        for a in soup.find_all("a", href=re.compile(r"/venta/piso/inmueble-")):
-            m = re.search(r"/inmueble-(.+?)(?:/|$)", a["href"])
-            if m and m.group(1) not in seen:
-                seen.add(m.group(1))
-                ids.append(m.group(1))
-                if limit is not None and len(ids) >= limit:
-                    break
-
-        if not seen:
+        results = state.get("results", {}).get("currentPageItems", {})
+        items = results.get("byId", {})
+        new_ids = []
+        for key in results.get("sortedItems", []):
+            item = (items.get(key) or {}).get("item") or {}
+            ref = item.get("reference")
+            if ref and ref not in ids and ref not in new_ids:
+                new_ids.append(ref)
+        if not new_ids:
             break
 
+        ids.extend(new_ids)
         if limit is not None and len(ids) >= limit:
+            ids = ids[:limit]
+            break
+
+        num_pages = state.get("pagination", {}).get("numPages")
+        if num_pages is not None and page >= num_pages:
             break
 
         prev_url = url
         page += 1
-        listing_path = LISTING_URL.replace(BASE_URL, "")
-        if not soup.find("a", href=f"{listing_path}/pag-{page}"):
-            break
 
     offers = []
     for property_id in tqdm(ids, desc="Scraping details", unit="property"):
-        offers.append(scrape_individual(property_id))
+        offers.append(_scrape_detail(session, property_id, referer=prev_url or LISTING_URL))
 
     return offers
 
 
 def scrape_individual(property_id):
-    url = f"{BASE_URL}/venta/piso/inmueble-{property_id}"
     session = requests.Session()
-
-    # Step 1: warm up through listing
+    # Visit the listing first so DataDome issues a session cookie before the detail request.
     r0 = _get(session, LISTING_URL)
     r0.raise_for_status()
+    return _scrape_detail(session, property_id, referer=LISTING_URL)
 
-    # Step 2: visit one real listing item to establish session trust
-    soup0 = BeautifulSoup(r0.text, "html.parser")
-    first_link = soup0.find("a", href=re.compile(r"/venta/piso/inmueble-"))
-    if first_link:
-        warmup_url = urljoin(BASE_URL, first_link["href"])
-        if warmup_url != url:
-            _get(session, warmup_url, referer=LISTING_URL)
 
-    resp = _get(session, url, referer=LISTING_URL)
+def _scrape_detail(session, property_id, referer):
+    url = f"{BASE_URL}/venta/piso/inmueble-{property_id}"
+    resp = _get(session, url, referer=referer)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    return _parse_detail(soup, url)
+    item = _extract_state(resp.text).get("details", {}).get("item") or {}
+    return _parse_detail(item, property_id, url)
 
 
-def _parse_detail(soup, url):
-    m_id = re.search(r"/inmueble-(.+?)(?:/|$)", url)
+def _parse_detail(item, property_id, url):
+    price_val = item.get("price")
+    price = f"{price_val:,} \u20ac".replace(",", ".") if price_val else "N/A"
 
-    title_el = soup.select_one("h1")
-    title = title_el.get_text(strip=True) if title_el else "N/A"
+    rooms = item.get("rooms")
+    area = item.get("area")
 
-    price_el = soup.select_one(".heading-text-l.c-content-primary")
-    price = price_el.get_text(strip=True) if price_el else "N/A"
+    qualified = (item.get("address") or {}).get("qualifiedName") or ""
+    zone = qualified.split(",")[0].strip() if qualified else "N/A"
 
-    rooms_el = soup.select_one(".icon-room span")
-    rooms_text = rooms_el.get_text(strip=True) if rooms_el else None
-    rooms = f"{rooms_text} hab." if rooms_text else "N/A"
+    features = item.get("businessFeatures") or {}
+    characteristics = features.get("characteristics") or []
+    equipment = [e.get("label", "") for e in
+                 (features.get("outstandingEquipment") or []) + (features.get("regularEquipment") or [])
+                 if e.get("value")]
+    all_feats = characteristics + equipment
 
-    surface_el = soup.select_one(".icon-meter span")
-    surface = surface_el.get_text(strip=True) if surface_el else "N/A"
-
-    # Zone from location section
-    zone = "N/A"
-    loc_el = soup.select_one(".details-location")
-    if loc_el:
-        for s in loc_el.stripped_strings:
-            s = s.strip()
-            if "," in s and s != "Ubicación":
-                zone = s.split(",")[0].strip()
-                break
-
-    features = [li.get_text(" ", strip=True) for li in soup.select(".characteristics li")]
-
-    # Planta
+    # Planta: "Planta 2ª" → 2, "Bajo" → 0
     planta = None
-    for f in features:
+    for f in characteristics:
         m = re.search(r"[Pp]lanta\s+(\d+)", f)
         if m:
             planta = int(m.group(1))
             break
-
-    # Ascensor
-    ascensor = 0
-    for f in features:
-        if re.search(r"^ascensor$", f, re.IGNORECASE):
-            ascensor = 1
+        if f.strip().lower() == "bajo":
+            planta = 0
             break
 
-    # Orientacion
+    # Orientacion: "Orientado a: Sur"
     orientacion = None
-    for f in features:
-        m = re.search(r"[Oo]rientad[oa]\s+a[:\s]+(\w+)", f, re.IGNORECASE)
+    for f in characteristics:
+        m = re.search(r"[Oo]rientad[oa]\s+a[:\s]+(\w+)", f)
         if m:
             orientacion = _ORIENT_MAP.get(m.group(1).lower(), m.group(1).upper())
             break
 
-    # Trastero / Terraza
-    trastero = 0
-    for f in features:
-        if re.search(r"trastero", f, re.IGNORECASE):
-            trastero = 1
-            break
+    def _has(word):
+        return 1 if any(word in f.lower() for f in all_feats) else 0
 
-    terraza = 0
-    for f in features:
-        if re.search(r"terraza", f, re.IGNORECASE):
-            terraza = 1
-            break
+    cert = ((item.get("energyCertificateRating") or {}).get("consumption") or {}).get("rating")
 
-    # Certificado energético
-    cert_el = soup.select_one(".energy-letter[data-rating]")
-    cert = None
-    if cert_el:
-        rating = cert_el.get("data-rating", "").upper()
-        cert = rating or None
-
-    # Inmobiliaria
-    agency_el = soup.select_one(".agency-info p.name")
-    inmobiliaria = agency_el.get_text(strip=True) or None if agency_el else None
-
-    # Description
-    desc_el = soup.select_one(".raw-format.description")
-    description = " ".join(desc_el.get_text(" ", strip=True).split()) if desc_el else None
+    description = " ".join((item.get("description") or "").split())
 
     return {
-        "id": m_id.group(1) if m_id else "N/A",
-        "name": title,
+        "id": property_id,
+        "name": item.get("title") or "N/A",
         "price": price,
         "url": url,
-        "rooms": rooms,
-        "surface": surface,
+        "rooms": f"{rooms} hab." if rooms else "N/A",
+        "surface": f"{area} m\u00b2" if area else "N/A",
         "zone": zone,
-        "description": description,
+        "description": description or None,
         "planta": planta,
-        "ascensor": ascensor,
+        "ascensor": _has("ascensor"),
         "orientacion": orientacion,
-        "trastero": trastero,
-        "terraza": terraza,
-        "certificado_energetico": cert,
-        "inmobiliaria": inmobiliaria,
+        "trastero": _has("trastero"),
+        "terraza": _has("terraza"),
+        "certificado_energetico": cert.upper() if cert else None,
+        "inmobiliaria": (item.get("owner") or {}).get("name") or None,
     }
 
 
