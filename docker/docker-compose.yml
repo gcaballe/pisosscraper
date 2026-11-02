@@ -19,6 +19,7 @@ services:
       retries: 5
 
   web:
+    container_name: pisosscraper-web
     build:
       context: ..
     image: pisosscraper-app:latest
@@ -35,6 +36,7 @@ services:
         condition: service_healthy
 
   scheduler:
+    container_name: pisosscraper-scheduler
     image: pisosscraper-app:latest
     restart: unless-stopped
     env_file:
